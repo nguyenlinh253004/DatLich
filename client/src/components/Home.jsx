@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
-import { motion, useAnimation, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion'; // Bỏ useAnimation vì không cần nữa
 import { FiClock, FiCheckCircle, FiPhone, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { FaQuoteLeft, FaStar } from 'react-icons/fa';
+// import { FaGlobe } from 'react-icons/fa';
 
 const Home = ({ token }) => {
+
   // State management
   const [services, setServices] = useState([]);
   const [testimonials, setTestimonials] = useState([]);
@@ -16,7 +18,6 @@ const Home = ({ token }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [activeFeature, setActiveFeature] = useState(0);
   
-  const controls = useAnimation();
   const testimonialInterval = useRef();
   const featureInterval = useRef();
 
@@ -51,12 +52,7 @@ const Home = ({ token }) => {
     if (!isPaused && testimonials.length > 0) {
       testimonialInterval.current = setInterval(() => {
         setCurrentTestimonial(prev => (prev + 1) % testimonials.length);
-        controls.start({ width: '100%', transition: { duration: 5 } }).then(() => {
-          controls.set({ width: '0%' });
-        });
       }, 5000);
-      
-      controls.start({ width: '100%', transition: { duration: 5 } });
     }
 
     featureInterval.current = setInterval(() => {
@@ -67,7 +63,7 @@ const Home = ({ token }) => {
       clearInterval(testimonialInterval.current);
       clearInterval(featureInterval.current);
     };
-  }, [testimonials.length, isPaused, controls]);
+  }, [testimonials.length, isPaused]);
 
   // Features data
   const features = [
@@ -125,6 +121,12 @@ const Home = ({ token }) => {
       x: direction > 0 ? -100 : 100,
       opacity: 0
     })
+  };
+
+  // Progress bar variants
+  const progressVariants = {
+    initial: { width: '0%' },
+    animate: { width: '100%' }
   };
 
   // Render stars for testimonials
@@ -373,9 +375,12 @@ const Home = ({ token }) => {
 
               {/* Progress bar */}
               <motion.div
+                key={currentTestimonial} // Reset animation khi currentTestimonial thay đổi
                 className="h-1.5 bg-blue-100 rounded-full mt-6"
-                initial={{ width: '0%' }}
-                animate={controls}
+                variants={progressVariants}
+                initial="initial"
+                animate="animate"
+                transition={{ duration: 5, ease: 'linear' }}
               />
 
               {/* Navigation */}

@@ -9,8 +9,11 @@ import {
   FaSignOutAlt,
   FaUser,
   FaBars,
-  FaTimes
+  FaTimes,
+  FaClock,
 } from 'react-icons/fa';
+import { HiOutlineClock } from 'react-icons/hi';
+import { FiClock,FiUser } from 'react-icons/fi';
 import { IoMdArrowDropdown } from 'react-icons/io';
 
 const Navbar = ({ token, setToken }) => {
@@ -103,7 +106,7 @@ const Navbar = ({ token, setToken }) => {
             <span className="hidden sm:inline">Hệ Thống Đặt Lịch</span>
             <span className="sm:hidden">Đặt Lịch</span>
           </Link>
-
+          
           {/* Desktop Navigation */}
           <div className="hidden md:flex md:items-center md:space-x-4">
             {token ? (
@@ -154,6 +157,22 @@ const Navbar = ({ token, setToken }) => {
                         >
                           <FaList className="mr-3" />
                           Danh sách lịch hẹn
+                        </Link>
+                        <Link
+                         to="/payment-history" 
+                         className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-blue-50"
+                         onClick={closeAllMenus} 
+                         >
+                          <FiClock className="mr-3 h-5 w-5 text-red-500" />
+                          Lịch sử thanh toán
+                        </Link>
+                        <Link
+                         to="/UserProfile" 
+                         className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-blue-50"
+                         onClick={closeAllMenus} 
+                         >
+                          <FiUser className="mr-3 h-5 w-5 text-blue-500" />
+                          Thông tin cá nhân
                         </Link>
                         <button
                           onClick={handleLogout}
@@ -239,6 +258,14 @@ const Navbar = ({ token, setToken }) => {
                   >
                     <FaList className="mr-3" />
                     Danh sách lịch hẹn
+                  </Link>
+                  <Link
+                    to="/payment-history"
+                    className="flex items-center px-3 py-2 rounded-md text-base font-medium text-white hover:bg-blue-600"
+                    onClick={closeAllMenus}
+                  >
+                  <HiOutlineClock className="mr-3" style={{ fontSize: '24px', color: 'red' }} />
+                    Lịch sử thanh toán
                   </Link>
                   <button
                     onClick={handleLogout}

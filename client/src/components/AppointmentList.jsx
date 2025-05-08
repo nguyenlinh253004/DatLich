@@ -31,11 +31,16 @@ const AppointmentList = ({ token, isAdmin = false }) => {
   });
 
   const itemsPerPage = 5;
+  
 
   const fetchServices = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/services');
-      setServices(res.data);
+      const res = await axios.get(`http://localhost:5000/api/services`);
+      if (Array.isArray(res.data)) {
+        setServices(res.data);
+      } else {
+        throw new Error('Dữ liệu dịch vụ không hợp lệ');
+      }
     } catch (error) {
       toast.error('Không thể tải danh sách dịch vụ');
     }
@@ -44,24 +49,25 @@ const AppointmentList = ({ token, isAdmin = false }) => {
   const fetchAppointments = async (page = 1) => {
     setLoading(true);
     try {
-      const res = await axios.get('http://localhost:5000/api/appointments', {
-        params: { 
+      const res = await axios.get(`http://localhost:5000/api/appointments`, {
+        params: {
           page,
           limit: itemsPerPage,
           search: searchTerm,
           status: statusFilter,
           paymentStatus: paymentStatusFilter,
-          confirmed: confirmationFilter
+          confirmed: confirmationFilter,
         },
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
-      console.log('API Response:', res.data);
-      
       setAppointments(res.data.data);
       setTotal(res.data.total);
     } catch (error) {
-      console.error('Fetch error:', error);
-      setError('Không thể tải danh sách lịch hẹn');
+      if (error.response?.status === 401) {
+        setError('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.');
+      } else {
+        setError('Không thể tải danh sách lịch hẹn');
+      }
     } finally {
       setLoading(false);
     }
@@ -71,17 +77,41 @@ const AppointmentList = ({ token, isAdmin = false }) => {
     fetchAppointments(currentPage + 1);
     fetchServices();
   }, [token, searchTerm, statusFilter, paymentStatusFilter, confirmationFilter, currentPage]);
-
-  const handleDelete = async (id) => {
+// Thêm hàm kiểm tra điều kiện hủy lịch
+const canCancelAppointment = (appt) => {
+  // Không thể hủy nếu đã xác nhận hoặc đã thanh toán
+  if (appt.confirmed === 'confirmed' || appt.status === 'paid') {
+    return false;
+  }
+  
+  // Admin có thể hủy bất kỳ lịch nào chưa xác nhận/chưa thanh toán
+  if (isAdmin) return true;
+  
+  // User chỉ có thể hủy trước khi lịch bắt đầu
+  const now = new Date();
+  const apptDate = new Date(appt.date);
+  return apptDate > now;
+};
+  const handleDelete = async (id,appt) => {
     if (window.confirm('Bạn có chắc muốn hủy lịch hẹn này?')) {
+      
       try {
+           
+          if (!canCancelAppointment(appt)) {
+            toast.error('Không thể hủy lịch đã được xác nhận hoặc đã thanh toán');
+            return;
+          }
         await axios.delete(`http://localhost:5000/api/appointments/${id}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         toast.success('Hủy lịch thành công');
         fetchAppointments(currentPage + 1);
       } catch (error) {
-        toast.error('Hủy lịch thất bại');
+        if (error.response?.status === 401) {
+          toast.error('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.');
+        } else {
+          toast.error('Không thể hủy nếu đã xác nhận hoặc đã thanh toán');
+        }
       }
     }
   };
@@ -106,10 +136,27 @@ const AppointmentList = ({ token, isAdmin = false }) => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       toast.success('Cập nhật lịch hẹn thành công');
+
+      if (!isAdmin) {
+        const updatedAppointment = { ...formData, _id: id };
+        await axios.post(
+          `http://localhost:5000/api/notify-admin`,
+          {
+            subject: 'Lịch hẹn đã được chỉnh sửa',
+            message: `Lịch hẹn của ${updatedAppointment.name} đã được chỉnh sửa:\n- Dịch vụ: ${updatedAppointment.service}\n- Thời gian: ${new Date(updatedAppointment.date).toLocaleString()}`,
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      }
+
       setEditingAppointment(null);
       fetchAppointments(currentPage + 1);
     } catch (error) {
-      toast.error('Cập nhật lịch hẹn thất bại');
+      if (error.response?.status === 401) {
+        toast.error('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.');
+      } else {
+        toast.error('Cập nhật lịch hẹn thất bại');
+      }
     }
   };
 
@@ -124,9 +171,40 @@ const AppointmentList = ({ token, isAdmin = false }) => {
         toast.success(`${confirmed === 'confirmed' ? 'Xác nhận' : 'Từ chối'} lịch hẹn thành công`);
         fetchAppointments(currentPage + 1);
       } catch (error) {
-        toast.error(`${confirmed === 'confirmed' ? 'Xác nhận' : 'Từ chối'} lịch hẹn thất bại`);
+        if (error.response?.status === 401) {
+          toast.error('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.');
+        } else {
+          toast.error(`${confirmed === 'confirmed' ? 'Xác nhận' : 'Từ chối'} lịch hẹn thất bại`);
+        }
       }
     }
+  };
+
+  const handleConfirmPayment = async (id, name) => {
+    if (window.confirm('Bạn có chắc muốn xác nhận thanh toán tiền mặt cho lịch hẹn này?')) {
+      try {
+        await axios.put(
+          `http://localhost:5000/api/appointments/${id}/confirm-payment`,
+          { status: 'paid' },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        toast.success(`Xác nhận thanh toán tiền mặt thành công cho lịch hẹn của ${name}`);
+        fetchAppointments(currentPage + 1);
+      } catch (error) {
+        if (error.response?.status === 401) {
+          toast.error('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.');
+        } else {
+          toast.error(error.response?.data?.message || 'Lỗi khi xác nhận thanh toán');
+        }
+      }
+    }
+  };
+
+  const canEditAppointment = (appt) => {
+    const now = new Date();
+    const apptDate = new Date(appt.date);
+    const timeDiff = (apptDate - now) / (1000 * 60 * 60);
+    return appt.confirmed === 'pending' && appt.status === 'pending' && timeDiff >= 24;
   };
 
   const getServicePrice = (serviceName) => {
@@ -160,7 +238,9 @@ const AppointmentList = ({ token, isAdmin = false }) => {
   };
 
   const getPaymentStatus = (status) => {
-    return status === 'paid' ? 'Đã thanh toán' : 'Chưa thanh toán';
+    if (status === 'paid') return 'Đã thanh toán';
+    if (status === 'cash_pending') return 'Chờ thanh toán tiền mặt';
+    return 'Chưa thanh toán';
   };
 
   const getConfirmationStatus = (confirmed) => {
@@ -183,9 +263,9 @@ const AppointmentList = ({ token, isAdmin = false }) => {
   };
 
   const getPaymentStatusStyle = (status) => {
-    return status === 'paid'
-      ? 'bg-blue-50 text-blue-700 border-blue-200'
-      : 'bg-yellow-50 text-yellow-700 border-yellow-200';
+    if (status === 'paid') return 'bg-blue-50 text-blue-700 border-blue-200';
+    if (status === 'cash_pending') return 'bg-orange-50 text-orange-700 border-orange-200';
+    return 'bg-yellow-50 text-yellow-700 border-yellow-200';
   };
 
   const getConfirmationStatusStyle = (confirmed) => {
@@ -275,6 +355,7 @@ const AppointmentList = ({ token, isAdmin = false }) => {
         >
           <option value="all">Tất cả (Thanh toán)</option>
           <option value="pending">Chưa thanh toán</option>
+          <option value="cash_pending">Chờ thanh toán tiền mặt</option>
           <option value="paid">Đã thanh toán</option>
         </select>
         <select
@@ -483,33 +564,39 @@ const AppointmentList = ({ token, isAdmin = false }) => {
                           </span>
                         </td>
                         <td className="py-4 px-6 flex space-x-3">
-                          {isAdmin && (
+                          {isAdmin && appt.confirmed === 'pending' && (
                             <>
-                              {appt.confirmed === 'pending' && (
-                                <>
-                                  <button
-                                    onClick={() => handleConfirm(appt._id, 'confirmed')}
-                                    className="inline-block px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition duration-200 shadow-sm"
-                                  >
-                                    Xác nhận
-                                  </button>
-                                  <button
-                                    onClick={() => handleConfirm(appt._id, 'rejected')}
-                                    className="inline-block px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition duration-200 shadow-sm"
-                                  >
-                                    Từ chối
-                                  </button>
-                                </>
-                              )}
                               <button
-                                onClick={() => handleEdit(appt)}
-                                className="inline-block px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition duration-200 shadow-sm"
+                                onClick={() => handleConfirm(appt._id, 'confirmed')}
+                                className="inline-block px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition duration-200 shadow-sm"
                               >
-                                Sửa
+                                Xác nhận
+                              </button>
+                              <button
+                                onClick={() => handleConfirm(appt._id, 'rejected')}
+                                className="inline-block px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition duration-200 shadow-sm"
+                              >
+                                Từ chối
                               </button>
                             </>
                           )}
-                          {!isAdmin && appt.status === 'pending' && (
+                          {isAdmin && appt.status === 'cash_pending' && (
+                            <button
+                              onClick={() => handleConfirmPayment(appt._id, appt.name)}
+                              className="inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-200 shadow-sm"
+                            >
+                              Xác nhận thanh toán
+                            </button>
+                          )}
+                          {(isAdmin || canEditAppointment(appt)) && (
+                            <button
+                              onClick={() => handleEdit(appt)}
+                              className="inline-block px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition duration-200 shadow-sm"
+                            >
+                              Sửa
+                            </button>
+                          )}
+                          {!isAdmin && appt.confirmed === 'confirmed' && appt.status !=='paid'  && (
                             <Link
                               to={`/payment/${appt._id}`}
                               state={{ amount: getServicePrice(appt.service) }}

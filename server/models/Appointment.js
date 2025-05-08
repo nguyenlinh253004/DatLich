@@ -8,7 +8,7 @@ const appointmentSchema = new mongoose.Schema({
   email: { type: String, },
   note: { type: String, },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  status: { type: String, default: 'pending', enum: ['pending', 'paid', 'cancelled'] },
+  status: { type: String, default: 'pending', enum: ['pending', 'paid', 'cancelled', 'cash_pending', 'qr_pending'], },
   price: { type: Number, default: 100000 }, // Thêm trường price
   confirmed: { type: String, enum: ['pending', 'confirmed', 'rejected'], default: 'pending' }, // Thêm trường confirmed
   createdAt: { type: Date, default: Date.now },

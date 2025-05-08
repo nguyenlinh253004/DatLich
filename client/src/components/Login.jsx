@@ -42,7 +42,9 @@ const Login = ({ setToken }) => {
         navigate('/'); // Thống nhất một trang đích
       }
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Đăng nhập thất bại');
+      toast.error(error.response?.data?.message || 
+        error.response?.data?.errors?.[0]?.msg || 
+        'Đăng nhập thất bại');
     }
   };
   const togglePasswordVisibility = () => {
@@ -66,7 +68,7 @@ const Login = ({ setToken }) => {
       localStorage.setItem('userRole', res.data.user.role); // Lưu role từ response mới
       
       toast.success('Đăng nhập thành công');
-      navigate(res.data.user.role === 'admin' ? '/admin/dashboard' : '/appointments');
+      navigate(res.data.user.role === 'admin' ? '/admin/dashboard' : '/'); // Chuyển hướng đến trang admin nếu là admin
     } catch (err) {
       toast.error(err.response?.data?.message || 'Xác minh 2FA thất bại');
     }

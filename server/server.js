@@ -5,7 +5,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 const apiRoutes = require('./routes/api');
 const rateLimit = require('express-rate-limit');
-
+const webhookRoutes = require('./routes/webhook');
 
 // Gọi dotenv ngay đầu file để load biến môi trường trước
 dotenv.config();
@@ -16,12 +16,13 @@ app.use(cors());
 
 // Middleware
 app.use(express.json());
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 phút
-  max: 100 // Giới hạn 100 request mỗi 15 phút
-});
+// const limiter = rateLimit({
+//   windowMs: 15 * 60 * 1000, // 15 phút
+//   message: 'Quá nhiều lần thử đăng nhập, vui lòng thử lại sau 15 phút',
+//   max: 100 // Giới hạn 100 request mỗi 15 phút
+// });
 
-app.use(limiter);
+// app.use(limiter);
 // Phục vụ file tĩnh từ thư mục uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -30,7 +31,7 @@ app.use('/api', apiRoutes);
 // Nếu muốn dùng paymentRoutes và appointment riêng, uncomment và tạo file tương ứng
 // app.use('/api/payments', require('./routes/payments'));
 // app.use('/api/appointments', require('./routes/appointments'));
-
+app.use('/api', webhookRoutes);
 // Kết nối MongoDB
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,

@@ -1,3 +1,22 @@
-/uploads
+# Ignore node_modules
+/node_modules
+# Ignore build artifacts
+dist/
+# Ignore environment variables
+.env
+# Ignore logs
+logs/
+# Ignore temporary files
+tmp/
+# Ignore coverage reports
+coverage/
+# Ignore database files
+db.sqlite3
+# Ignore IDE specific files
+.idea/
+# Ignore OS specific files
+.DS_Store
+# Ignore build artifacts
+build/
 
-node_modules
+/uploads

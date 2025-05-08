@@ -9,12 +9,13 @@ const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const multer = require('multer');
 const path = require('path');
+const Payment = require('../models/Payments');
 const QRCode = require('qrcode');
 const speakeasy = require('speakeasy');
 const { body, validationResult } = require('express-validator');
 require('dotenv').config();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET; // Thay đổi đường dẫn nếu cần
 // Cấu hình email
 const transporter = nodemailer.createTransport({
   service: 'Gmail',
@@ -173,13 +174,55 @@ router.get('/user', authMiddleware, async (req, res) => {
     res.status(500).json({ message: 'Lỗi khi lấy thông tin người dùng', error: err.message });
   }
 });
+// Get current user profile
+router.get('/users/me', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select('-password -twoFactorSecret');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json(user);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
 
+// Update user profile
+router.put('/users/me', authMiddleware, async (req, res) => {
+  const { name, phone, address, gender, dateOfBirth, occupation, avatar } = req.body;
+  
+  try {
+    const user = await User.findById(req.userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    user.name = name || user.name;
+    user.phone = phone || user.phone;
+    user.address = address || user.address;
+    user.gender = gender || user.gender;
+    user.dateOfBirth = dateOfBirth || user.dateOfBirth;
+    user.occupation = occupation || user.occupation;
+    user.avatar = avatar || user.avatar;
+    
+    await user.save();
+    
+    res.json(user);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
 router.post(
   '/register',
   [
-    body('email').isEmail().withMessage('Email không hợp lệ'),
-    body('password').isLength({ min: 6 }).withMessage('Mật khẩu phải có ít nhất 6 ký tự'),
-    body('name').notEmpty().withMessage('Tên là bắt buộc'),
+    body('email').isEmail().withMessage('Email không hợp lệ').normalizeEmail(),
+    body('password').isLength({ min: 8 }).withMessage('Mật khẩu phải có ít nhất 8 ký tự'),
+    body('name').notEmpty().withMessage('Tên là bắt buộc').trim(),
+    body('phone').optional().isMobilePhone().withMessage('Số điện thoại không hợp lệ'),
+    body('dateOfBirth').optional().isDate().withMessage('Ngày sinh không hợp lệ'),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -188,21 +231,43 @@ router.post(
     }
 
     try {
-      const { email, password, name } = req.body;
+      const { email, password, name, phone, address, gender, dateOfBirth, occupation } = req.body;
+      
       const existingUser = await User.findOne({ email });
       if (existingUser) {
         return res.status(400).json({ message: 'Email đã tồn tại' });
       }
-      const hashedPassword = await bcrypt.hash(password, 10);
-      const user = new User({ email, password: hashedPassword, name });
+
+      const user = new User({ 
+        email, 
+        password,
+        name,
+        phone,
+        address,
+        gender,
+        dateOfBirth,
+        occupation
+      });
+      
       await user.save();
-      res.status(201).json({ message: 'Đăng ký thành công' });
+      
+      // Optionally send welcome email here
+      
+      res.status(201).json({ 
+        message: 'Đăng ký thành công',
+        user: {
+          _id: user._id,
+          email: user.email,
+          name: user.name,
+          role: user.role
+        }
+      });
     } catch (err) {
-      res.status(400).json({ message: 'Lỗi khi đăng ký', error: err.message });
+      console.error('Registration error:', err);
+      res.status(500).json({ message: 'Lỗi khi đăng ký', error: err.message });
     }
   }
 );
-
 router.post(
   '/login',
   [
@@ -238,7 +303,35 @@ router.post(
     }
   }
 );
+// kiểm tra thời gian còn trống
+router.post('/appointments/check-availability', authMiddleware, async (req, res) => {
+  const { date } = req.body;
 
+  try {
+    if (!date) {
+      return res.status(400).json({ message: 'Thiếu thông tin ngày giờ' });
+    }
+
+    const appointmentDate = new Date(date);
+    const startTime = new Date(appointmentDate);
+    const endTime = new Date(appointmentDate.getTime() + 30 * 60 * 1000); // Giả sử mỗi lịch hẹn kéo dài 30 phút
+
+    const conflictingAppointments = await Appointment.find({
+      date: {
+        $gte: startTime,
+        $lt: endTime,
+      },
+    });
+
+    if (conflictingAppointments.length > 0) {
+      return res.json({ available: false });
+    }
+
+    return res.json({ available: true });
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi khi kiểm tra thời gian khả dụng', error: err.message });
+  }
+});
 // Appointments
 router.post('/appointments', authMiddleware, async (req, res) => {
   try {
@@ -428,7 +521,79 @@ router.put('/appointments/:id/confirm', authMiddleware, adminMiddleware, async (
     res.status(500).json({ message: 'Lỗi khi cập nhật trạng thái lịch hẹn', error: err.message });
   }
 });
+// Xác nhận thanh toán qua mã QR
+router.put('/payments/confirm-qr/:paymentId', authMiddleware, async (req, res) => {
+  try {
+    if (req.userRole !== 'admin') {
+      return res.status(403).json({ message: 'Chỉ admin mới có quyền xác nhận thanh toán' });
+    }
 
+    const { paymentId } = req.params;
+    const payment = await Payment.findOne({ paymentId });
+    if (!payment) {
+      return res.status(404).json({ message: 'Không tìm thấy thông tin thanh toán' });
+    }
+
+    if (payment.status !== 'pending') {
+      return res.status(400).json({ message: 'Thanh toán không ở trạng thái chờ xác nhận' });
+    }
+
+    payment.status = 'paid';
+    await payment.save();
+
+    const appointment = await Appointment.findById(payment.appointmentId);
+    if (appointment) {
+      appointment.status = 'paid';
+      await appointment.save();
+
+      // Gửi email thông báo cho người dùng
+      // if (appointment.email) {
+      //   await sendEmail(
+      //     appointment.email,
+      //     'Xác nhận thanh toán qua mã QR',
+      //     `Chào ${appointment.name},\n\nLịch hẹn của bạn đã được xác nhận thanh toán qua mã QR:\n- Dịch vụ: ${appointment.service}\n- Thời gian: ${new Date(appointment.date).toLocaleString()}\n\nCảm ơn bạn đã sử dụng dịch vụ!\n\nTrân trọng,\nHệ thống đặt lịch`
+      //   );
+      // }
+
+      // Gửi email thông báo cho admin
+      // await sendEmail(
+      //   process.env.ADMIN_EMAIL || 'admin@example.com',
+      //   'Xác nhận thanh toán qua mã QR',
+      //   `Lịch hẹn đã được xác nhận thanh toán qua mã QR:\n- Tên khách hàng: ${appointment.name}\n- Dịch vụ: ${appointment.service}\n- Thời gian: ${new Date(appointment.date).toLocaleString()}`
+      // );
+    }
+
+    res.json({ success: true, message: 'Xác nhận thanh toán qua mã QR thành công' });
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi khi xác nhận thanh toán', error: err.message });
+  }
+});
+// Xác nhận thanh toán tiền mặt
+router.put('/appointments/:id/confirm-payment', authMiddleware, async (req, res) => {
+  try {
+    if (req.userRole !== 'admin') {
+      return res.status(403).json({ message: 'Chỉ admin mới có quyền xác nhận thanh toán' });
+    }
+
+    const { id } = req.params;
+    const appointment = await Appointment.findById(id);
+    if (!appointment) {
+      return res.status(404).json({ message: 'Không tìm thấy lịch hẹn' });
+    }
+
+    if (appointment.status !== 'cash_pending') {
+      return res.status(400).json({ message: 'Lịch hẹn không ở trạng thái chờ thanh toán tiền mặt' });
+    }
+
+    appointment.status = 'paid';
+    await appointment.save();
+
+    res.json({ success: true, message: 'Xác nhận thanh toán tiền mặt thành công' });
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi khi xác nhận thanh toán', error: err.message });
+  }
+});
+// Hủy lịch hẹn
 router.delete('/appointments/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -444,51 +609,216 @@ router.delete('/appointments/:id', authMiddleware, async (req, res) => {
 
 // Payments
 router.post('/payments/create-payment-intent', authMiddleware, async (req, res) => {
-  const { amount, appointmentId } = req.body;
+  const { amount, appointmentId, paymentMethod } = req.body;
 
   try {
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount,
-      currency: 'vnd',
-      metadata: { appointmentId },
-    });
-    res.json({ clientSecret: paymentIntent.client_secret });
+    // Kiểm tra các tham số bắt buộc
+    if (!amount || !appointmentId || !paymentMethod) {
+      return res.status(400).json({ message: 'Thiếu amount, appointmentId hoặc paymentMethod' });
+    }
+
+    // Tìm lịch hẹn
+    const appointment = await Appointment.findById(appointmentId);
+    if (!appointment) {
+      return res.status(404).json({ message: 'Không tìm thấy lịch hẹn' });
+    }
+
+    // Kiểm tra trạng thái lịch hẹn
+    if (appointment.status === 'paid') {
+      return res.status(400).json({ message: 'Lịch hẹn đã được thanh toán' });
+    }
+
+    // Xử lý theo phương thức thanh toán
+    if (paymentMethod === 'cash') {
+      appointment.status = 'cash_pending';
+      await appointment.save();
+
+      return res.json({
+        success: true,
+        message: 'Lịch hẹn đã được đặt. Vui lòng thanh toán bằng tiền mặt tại cửa hàng.',
+      });
+    } else if (paymentMethod === 'online') {
+      // Kiểm tra amount tối thiểu cho Stripe (ví dụ: 12,000 VND)
+      if (amount < 12000) {
+        return res.status(400).json({ message: 'Số tiền phải lớn hơn 12,000 VND để thanh toán qua Stripe' });
+      }
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount,
+        currency: 'vnd',
+        metadata: { appointmentId: appointmentId.toString() },
+      });
+
+      appointment.status = 'pending';
+      await appointment.save();
+
+      return res.json({ clientSecret: paymentIntent.client_secret });
+    } else {
+      return res.status(400).json({ message: 'Phương thức thanh toán không hợp lệ' });
+    }
   } catch (err) {
-    res.status(500).json({ message: 'Lỗi khi tạo Payment Intent', error: err.message });
+    console.error('Lỗi tại /payments/create-payment-intent:', err);
+    res.status(500).json({ message: 'Lỗi khi xử lý thanh toán', error: err.message });
   }
 });
 
+// Tạo mã QR
 router.post('/payments/create-qr', authMiddleware, async (req, res) => {
-  const { amount, appointmentId } = req.body;
+  const { amount, appointmentId, paymentMethod } = req.body;
 
   try {
-    if (!amount || !appointmentId) {
-      return res.status(400).json({ message: 'Thiếu amount hoặc appointmentId' });
+    if (!amount || !appointmentId || !paymentMethod) {
+      return res.status(400).json({ message: 'Thiếu amount, appointmentId hoặc paymentMethod' });
     }
 
-    const bankInfo = {
-      bankId: 'TPBANK',
-      accountNumber: '03653904809',
-      accountName: 'NGUYEN QUANG LINH',
-    };
+    if (isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ message: 'Số tiền không hợp lệ, phải là số dương' });
+    }
 
-    const qrData = {
-      bankId: bankInfo.bankId,
-      accountNumber: bankInfo.accountNumber,
-      amount: amount,
-      description: `Thanh toan lich hen ${appointmentId}`,
-    };
+    if (amount < 12000) {
+      return res.status(400).json({ message: 'Số tiền phải lớn hơn 12,000 VND để thanh toán qua mã QR' });
+    }
 
-    const qrString = `https://img.vietqr.io/image/${bankInfo.bankId}-${bankInfo.accountNumber}-compact2.png?amount=${qrData.amount}&addInfo=${encodeURIComponent(qrData.description)}&accountName=${encodeURIComponent(bankInfo.accountName)}`;
+    const appointment = await Appointment.findById(appointmentId);
+    if (!appointment) {
+      return res.status(404).json({ message: 'Không tìm thấy lịch hẹn' });
+    }
 
-    const qrCodeBase64 = await QRCode.toDataURL(qrString);
+    if (appointment.status === 'paid') {
+      return res.status(400).json({ message: 'Lịch hẹn đã được thanh toán' });
+    }
 
-    res.json({ qrCode: qrCodeBase64, message: 'Mã QR đã được tạo thành công' });
+    if (paymentMethod === 'qr') {
+      const bankInfo = {
+        bankId: 'TPBANK',
+        accountNumber: '03653904809',
+        accountName: 'NGUYEN QUANG LINH',
+      };
+
+      const qrData = {
+        bankId: bankInfo.bankId,
+        accountNumber: bankInfo.accountNumber,
+        amount: amount,
+        description: `Thanh toan lich hen ${appointmentId}`,
+      };
+
+      const qrString = `https://img.vietqr.io/image/${bankInfo.bankId}-${bankInfo.accountNumber}-compact2.png?amount=${qrData.amount}&addInfo=${encodeURIComponent(qrData.description)}&accountName=${encodeURIComponent(bankInfo.accountName)}`;
+
+      let qrCodeBase64;
+      try {
+        qrCodeBase64 = await QRCode.toDataURL(qrString);
+      } catch (qrError) {
+        return res.status(500).json({ message: 'Lỗi khi tạo mã QR', error: qrError.message });
+      }
+
+      // Lưu thông tin thanh toán
+      const payment = new Payment({
+        userId: req.userId, // Lưu userId từ token
+        paymentId: `PAY-${appointmentId}-${Date.now()}`,
+        transactionId: `TRANS-${appointmentId}-${Date.now()}`,
+        appointmentId,
+        amount,
+        status: 'pending',
+        method: 'qr',
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 phút hết hạn
+      });
+      await payment.save();
+
+      appointment.status = 'qr_pending';
+      await appointment.save();
+
+      return res.json({
+        qrCode: qrCodeBase64,
+        paymentId: payment.paymentId,
+        transactionId: payment.transactionId,
+        expiresAt: payment.expiresAt,
+        message: 'Mã QR đã được tạo thành công',
+      });
+    } else {
+      return res.status(400).json({ message: 'Phương thức thanh toán không hợp lệ' });
+    }
   } catch (err) {
     res.status(500).json({ message: 'Lỗi khi tạo mã QR', error: err.message });
   }
 });
 
+// Kiểm tra trạng thái thanh toán
+router.get('/payments/status/:paymentId', authMiddleware, async (req, res) => {
+  const { paymentId } = req.params;
+
+  try {
+    const payment = await Payment.findOne({ paymentId });
+    if (!payment) {
+      return res.status(404).json({ message: 'Không tìm thấy thông tin thanh toán' });
+    }
+
+    if (new Date() > payment.expiresAt) {
+      payment.status = 'expired';
+      await payment.save();
+      return res.json({ status: 'expired' });
+    }
+
+    return res.json({ status: payment.status });
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi khi kiểm tra trạng thái thanh toán', error: err.message });
+  }
+});
+// Thêm route webhook cho thanh toán QR
+router.post('/payments/qr-webhook', async (req, res) => {
+  const { transactionId, amount, status, timestamp } = req.body;
+
+  try {
+    // Xác thực webhook (nên thêm chữ ký hoặc IP whitelist)
+    if (!transactionId || !amount || !status) {
+      return res.status(400).json({ message: 'Thiếu thông tin giao dịch' });
+    }
+
+    // Tìm payment trong database
+    const payment = await Payment.findOne({ 
+      transactionId,
+      status: 'pending',
+      method: 'qr'
+    });
+
+    if (!payment) {
+      return res.status(404).json({ message: 'Không tìm thấy giao dịch' });
+    }
+
+    // Kiểm tra số tiền
+    if (payment.amount !== amount) {
+      return res.status(400).json({ message: 'Số tiền không khớp' });
+    }
+
+    // Xử lý theo trạng thái
+    if (status === 'success') {
+      // Cập nhật trạng thái thanh toán
+      payment.status = 'paid';
+      payment.paidAt = new Date();
+      await payment.save();
+
+      // Cập nhật trạng thái lịch hẹn
+      const appointment = await Appointment.findById(payment.appointmentId);
+      if (appointment) {
+        appointment.status = 'paid';
+        await appointment.save();
+      }
+
+      // Gửi email xác nhận (nếu cần)
+      // ...
+
+      return res.json({ success: true });
+    } else if (status === 'failed') {
+      payment.status = 'failed';
+      await payment.save();
+      return res.json({ success: true });
+    }
+
+    return res.status(400).json({ message: 'Trạng thái không hợp lệ' });
+  } catch (err) {
+    console.error('Lỗi webhook thanh toán QR:', err);
+    res.status(500).json({ message: 'Lỗi khi xử lý webhook' });
+  }
+});
 // Users
 router.get('/users', authMiddleware, adminMiddleware, async (req, res) => {
   try {
@@ -551,14 +881,32 @@ router.get('/stats', authMiddleware, async (req, res) => {
     const pendingAppointments = await Appointment.countDocuments({ confirmed: 'pending' });
     const paidAppointments = await Appointment.countDocuments({ status: 'paid' });
 
+    // Tính tổng doanh thu từ các lịch hẹn đã thanh toán
+    const paidAppointmentsData = await Appointment.find({ status: 'paid' });
+    let totalRevenue = 0;
+
+    for (const appt of paidAppointmentsData) {
+      // Nếu giá đã được lưu trong Appointment
+      if (appt.price) {
+        totalRevenue += appt.price;
+      } else {
+        // Nếu không, lấy giá từ model Service
+        const service = await Service.findOne({ name: appt.service });
+        if (service && service.price) {
+          totalRevenue += service.price;
+        }
+      }
+    }
+
     res.json({
       success: true,
       data: {
         totalAppointments,
         confirmedAppointments,
         pendingAppointments,
-        paidAppointments
-      }
+        paidAppointments,
+        totalRevenue, // Thêm doanh thu vào response
+      },
     });
   } catch (err) {
     res.status(500).json({ message: 'Lỗi khi lấy thống kê', error: err.message });
@@ -710,4 +1058,101 @@ router.get('/2fa-status', authMiddleware, async (req, res) => {
     res.status(500).json({ message: 'Lỗi khi kiểm tra trạng thái 2FA', error: err.message });
   }
 });
+
+// Webhook endpoint
+router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    // Xác minh webhook signature
+    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+  } catch (err) {
+    console.error(`Webhook Error: ${err.message}`);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Xử lý các sự kiện từ Stripe
+  switch (event.type) {
+    case 'payment_intent.succeeded':
+      const paymentIntent = event.data.object;
+      console.log(`PaymentIntent ${paymentIntent.id} succeeded!`);
+
+      try {
+        // Tìm Payment theo paymentId
+        const payment = await Payment.findOne({ paymentId: paymentIntent.id });
+        if (payment) {
+          payment.status = 'paid';
+          await payment.save();
+
+          // Cập nhật trạng thái Appointment
+          const appointment = await Appointment.findById(payment.appointmentId);
+          if (appointment) {
+            appointment.status = 'paid';
+            await appointment.save();
+          }
+        }
+      } catch (error) {
+        console.error(`Error updating payment status: ${error.message}`);
+      }
+      break;
+
+    case 'payment_intent.payment_failed':
+      const failedPayment = event.data.object;
+      console.log(`PaymentIntent ${failedPayment.id} failed!`);
+
+      try {
+        const payment = await Payment.findOne({ paymentId: failedPayment.id });
+        if (payment) {
+          payment.status = 'failed';
+          await payment.save();
+        }
+      } catch (error) {
+        console.error(`Error updating payment status: ${error.message}`);
+      }
+      break;
+
+    default:
+      console.log(`Unhandled event type ${event.type}`);
+  }
+
+  res.status(200).json({ received: true });
+});
+// API lấy lịch sử thanh toán
+router.get('/history', authMiddleware, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Thêm userId vào query
+    const payments = await Payment.find({ userId: req.userId })
+      .populate('appointmentId', 'service date status')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const total = await Payment.countDocuments({ userId: req.userId });
+
+    res.json({
+      success: true,
+      data: payments,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching payment history:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Lỗi khi lấy lịch sử thanh toán',
+      error: error.message 
+    });
+  }
+});
+
 module.exports = router;

@@ -18,6 +18,8 @@ import Stats from './components/stats';
 import UserList from './components/UserList';
 import AppointmentCalendar from './components/AppointmentCalendar';
 import Setup2FA from './components/Setup2FA';
+import UserProfile from './components/InforUser';
+import PaymentHistory from './components/PaymentHistory';
 import { useNavigate } from 'react-router-dom';
 function App() {
   const [services, setServices] = useState([]);
@@ -61,24 +63,25 @@ function App() {
           <Route path="/admin/stats" element={<Stats token={token} />} />
           <Route path="/admin/services" element={<AdminDashboard token={token} />} />
           <Route path="/payment/:id" element={<Payment token={token} onSuccess={() => navigate('/AppointmentList')} />} />
-          
+          <Route path="/payment-history" element={<PaymentHistory token={token} />} />
         <Route path="/admin/users" element={<UserList token={token} />} />
         <Route path="/admin/calendar" element={<AppointmentCalendar token={token} />} />
         <Route path="/setup-2fa" element={<Setup2FA token={token} />} />
+        <Route path="/UserProfile" element={<UserProfile  token={token}/>} />
         </Routes>
-        <ChatbotComponent token={token} />
+        <ChatbotComponent/>
         <ToastContainer
-  position="top-right"
-  autoClose={3000}
-  hideProgressBar={false}
-  newestOnTop
-  closeOnClick
-  rtl={false}
-  pauseOnFocusLoss
-  draggable
-  pauseOnHover
-  style={{ zIndex: 9999 }}
-/>
+          position="top-right"
+          autoClose={3000}
+          hideProgressBar={false}
+          newestOnTop
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+          style={{ zIndex: 9999 }}
+        />
         </div>
       </div>
     </Router>
