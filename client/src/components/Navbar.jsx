@@ -15,6 +15,7 @@ import {
 import { HiOutlineClock } from 'react-icons/hi';
 import { FiClock,FiUser } from 'react-icons/fi';
 import { IoMdArrowDropdown } from 'react-icons/io';
+import { toast } from 'react-toastify';
 
 const Navbar = ({ token, setToken }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -47,6 +48,7 @@ const Navbar = ({ token, setToken }) => {
     localStorage.removeItem('token');
     setUser('');
     navigate('/login');
+    toast.success("Đăng xuất thành công")
   };
 
   const closeAllMenus = () => {

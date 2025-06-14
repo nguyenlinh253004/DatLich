@@ -280,7 +280,7 @@ const Home = ({ token }) => {
                 >
                   <div className="relative h-48 overflow-hidden">
                     <img
-                      src={service.image || 'https://via.placeholder.com/400x300'}
+                       src={`http://localhost:5000${service.image}`} 
                       alt={service.name}
                       className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
                     />
@@ -484,7 +484,7 @@ const Home = ({ token }) => {
             >
               <div className="relative">
                 <img
-                  src={selectedService.image || 'https://via.placeholder.com/800x500'}
+                  src={ `http://localhost:5000${selectedService.image}` }
                   alt={selectedService.name}
                   className="w-full h-64 object-cover rounded-t-xl"
                 />

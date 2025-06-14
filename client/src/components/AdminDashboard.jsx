@@ -623,7 +623,7 @@ const AdminDashboard = ({ token }) => {
                     Image Preview
                   </label>
                   <img
-                    src={editService?.imagePreview || editService?.image || newService.imagePreview}
+                    src={`http://localhost:5000${editService?.imagePreview || editService?.image || newService.imagePreview}` }
                     alt="Service preview"
                     className="max-w-full h-48 object-contain rounded border"
                   />
@@ -720,12 +720,12 @@ const AdminDashboard = ({ token }) => {
                       <div className="text-sm text-gray-500 line-clamp-2">{service.Description}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">${service.price}</div>
+                      <div className="text-sm text-gray-900">{service.price} VNĐ</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {service.image && (
                         <img 
-                          src={service.image } 
+                          src={`http://localhost:5000${service.image}`} 
                           alt={service.name}
                           className="h-10 w-10 rounded-full object-cover"
                         />
@@ -784,7 +784,7 @@ const AdminDashboard = ({ token }) => {
                       className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <span className="sr-only">Previous</span>
-                      &larr;\\\\\\\\\\
+                      &larr;
                     </button>
                     {Array.from({ length: serviceTotalPages }, (_, i) => i + 1).map(page => (
                       <button

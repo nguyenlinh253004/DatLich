@@ -42,14 +42,14 @@ const PaymentForm = ({ appointmentId, amount, token, onSuccess }) => {
         { amount, appointmentId, paymentMethod: 'qr' },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
+console.log('API Response:', data);
       setQrCode(data.qrCode);
       setQrData({
         transactionId: data.transactionId || `TRANS-${appointmentId}`,
         paymentId: data.paymentId || `PAY-${appointmentId}`,
         expiresAt: new Date(data.expiresAt), // Lấy từ API
       });
-
+      console.log(qrData)
       toast.success('Mã QR đã được tạo. Vui lòng quét để thanh toán.');
     } catch (err) {
       if (err.response?.status === 401) {
@@ -228,7 +228,7 @@ const PaymentForm = ({ appointmentId, amount, token, onSuccess }) => {
 
   if (paymentSuccess) {
     return (
-      <div className="max-w-md mx-auto p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">
+      <div className="mt-20 max-w-md mx-auto p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">
         <h2 className="text-xl font-semibold mb-2">Xác nhận thành công!</h2>
         <p>
           {paymentMethod === 'cash'
