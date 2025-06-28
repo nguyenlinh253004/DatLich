@@ -162,7 +162,7 @@ const BookingForm = ({ fetchAppointments, token }) => {
         throw new Error('Không nhận được ID lịch hẹn từ server');
       }
 
-      toast.success('Đặt lịch thành công! Vui lòng chọn phương thức thanh toán.');
+      toast.success('Đặt lịch thành công!');
       setAppointmentId(res.data.appointment._id);
       setShowPayment(true);
       setFormData({
@@ -320,20 +320,11 @@ const BookingForm = ({ fetchAppointments, token }) => {
       ) : (
         <div>
           <h3 className="text-lg font-semibold mb-4 text-center text-green-600">
-            Đặt lịch thành công! Vui lòng chọn phương thức thanh toán.
+            Đặt lịch thành công!
           </h3>
-
-          {/* {showPayment && (
-            <div className="mt-4">
-              <Payment
-                appointmentId={appointmentId}
-                amount={selectedServicePrice}
-                token={token}
-                onSuccess={handlePaymentSuccess}
-              />
-            </div>
-          )} */}
-
+            <p className="text-center mb-4 text-gray-600">
+              Lịch hẹn của bạn đang chờ admin duyệt. Xin cảm ơn!
+            </p>
           <button
             onClick={() => {
               setAppointmentId(null);

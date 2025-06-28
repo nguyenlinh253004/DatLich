@@ -13,6 +13,9 @@ const Payment = require('../models/Payments');
 const QRCode = require('qrcode');
 const speakeasy = require('speakeasy');
 const { body, validationResult } = require('express-validator');
+const authMiddleware = require('../middleware/authMiddleware');
+const adminMiddleware = require('../middleware/adminMiddleware');
+// const {authMiddleware,adminMiddleware} = require('../middleware/middleware');
 require('dotenv').config();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET; // Thay đổi đường dẫn nếu cần
@@ -28,45 +31,13 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+
 // Cấu hình multer
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
   filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
 });
 const upload = multer({ storage });
-
-// Middleware xác thực
-const authMiddleware = async (req, res, next) => {
-  const token = req.header('Authorization')?.replace('Bearer ', '');
-  if (!token) {
-    return res.status(401).json({ message: 'Không có token, truy cập bị từ chối' });
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.userId);
-    if (!user) {
-      return res.status(401).json({ message: 'Người dùng không tồn tại' });
-    }
-    if (user.isLocked) {
-      return res.status(403).json({ message: 'Tài khoản của bạn đã bị khóa' });
-    }
-    req.userId = decoded.userId;
-    req.userRole = user.role;
-    next();
-  } catch (err) {
-    res.status(401).json({ message: 'Token không hợp lệ' });
-  }
-};
-
-// Middleware kiểm tra admin
-const adminMiddleware = async (req, res, next) => {
-  const user = await User.findById(req.userId);
-  if (!user || user.role !== 'admin') {
-    return res.status(403).json({ message: 'Chỉ admin mới có quyền truy cập' });
-  }
-  next();
-};
 
 // Services
 router.post('/services', authMiddleware, adminMiddleware, upload.single('image'), async (req, res) => {
@@ -286,6 +257,9 @@ router.post(
       if (!user || !(await bcrypt.compare(password, user.password))) {
         return res.status(400).json({ message: 'Email hoặc mật khẩu không đúng' });
       }
+      if(user.isLocked){
+        return res.status(403).json({ message: 'Tài khoản của bạn đã bị khóa' });
+      }
       // Nếu 2FA được kích hoạt, không trả về token ngay
       if (user.twoFactorEnabled) {
         return res.json({
@@ -297,12 +271,72 @@ router.post(
         });
       }
       const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-      res.json({success: true, token, user: { email: user.email, role: user.role } });
+        // Tạo Refresh Token (hết hạn sau 7 ngày, lưu vào DB)
+      const refreshToken = jwt.sign(
+        { userId: user._id },
+        process.env.REFRESH_TOKEN_SECRET,
+        { expiresIn: '7d' }
+      );
+      user.refreshToken = refreshToken;
+      await user.save();
+      res.json({success: true, token,refreshToken, user: { email: user.email, role: user.role } });
     } catch (err) {
       res.status(400).json({ message: 'Lỗi khi đăng nhập', error: err.message });
     }
   }
 );
+router.post('/logout', async (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) {
+    return res.status(400).json({ message: 'Refresh Token là bắt buộc' });
+  }
+
+  try {
+    // Xóa Refresh Token khỏi DB
+    await User.findOneAndUpdate(
+      { refreshToken },
+      { $unset: { refreshToken: "" } }
+    );
+    res.json({ success: true, message: 'Đăng xuất thành công' });
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi khi đăng xuất', error: err.message });
+  }
+});
+router.post('/refresh-token', async (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) {
+    return res.status(401).json({ message: 'Refresh Token là bắt buộc' });
+  }
+
+  try {
+    // Kiểm tra Refresh Token trong DB
+    const user = await User.findOne({ refreshToken });
+    if (!user) {
+      return res.status(403).json({ message: 'Refresh Token không hợp lệ' });
+    }
+
+    // Xác minh Refresh Token
+    jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET, (err, decoded) => {
+      if (err || user._id.toString() !== decoded.userId) {
+        return res.status(403).json({ message: 'Refresh Token không hợp lệ' });
+      }
+
+      // Tạo Access Token mới
+      const newAccessToken = jwt.sign(
+        { userId: user._id },
+        process.env.JWT_SECRET,
+        { expiresIn: '15m' }
+      );
+
+      res.json({
+        success: true,
+        accessToken: newAccessToken
+      });
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi khi làm mới Token', error: err.message });
+  }
+});
 // kiểm tra thời gian còn trống
 router.post('/appointments/check-availability', authMiddleware, async (req, res) => {
   const { date } = req.body;
@@ -912,6 +946,74 @@ router.get('/stats', authMiddleware, async (req, res) => {
     res.status(500).json({ message: 'Lỗi khi lấy thống kê', error: err.message });
   }
 });
+
+router.get('/stats/revenue-by-time', authMiddleware, async (req, res) => {
+  try {
+    if (req.userRole !== 'admin') {
+      return res.status(403).json({ message: 'Chỉ admin mới có quyền xem thống kê' });
+    }
+
+    const { range } = req.query; // 'week', 'month', 'year'
+    const now = new Date();
+    let startDate;
+
+    switch (range) {
+      case 'week':
+        startDate = new Date(now.setDate(now.getDate() - 7));
+        break;
+      case 'month':
+        startDate = new Date(now.setMonth(now.getMonth() - 1));
+        break;
+      case 'year':
+        startDate = new Date(now.setFullYear(now.getFullYear() - 1));
+        break;
+      default:
+        startDate = new Date(now.setDate(now.getDate() - 7)); // Mặc định 1 tuần
+    }
+
+    const paidAppointments = await Appointment.find({
+      status: 'paid',
+      createdAt: { $gte: startDate }
+    });
+
+    // Nhóm dữ liệu theo khoảng thời gian
+    let revenueData = [];
+    const groupBy = range === 'week' ? 'day' : range === 'month' ? 'week' : 'month';
+
+    paidAppointments.forEach(appt => {
+      const date = new Date(appt.createdAt);
+      let periodKey;
+      
+      if (groupBy === 'day') {
+        periodKey = date.toLocaleDateString('vi-VN');
+      } else if (groupBy === 'week') {
+        const weekNumber = Math.ceil(date.getDate() / 7);
+        periodKey = `Tuần ${weekNumber}, Tháng ${date.getMonth() + 1}`;
+      } else {
+        periodKey = `Tháng ${date.getMonth() + 1}`;
+      }
+
+      const price = appt.price || 0;
+      const existingPeriod = revenueData.find(item => item.period === periodKey);
+      
+      if (existingPeriod) {
+        existingPeriod.revenue += price;
+      } else {
+        revenueData.push({
+          period: periodKey,
+          revenue: price
+        });
+      }
+    });
+
+    res.json({
+      success: true,
+      data: revenueData.sort((a, b) => a.period.localeCompare(b.period))
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi khi lấy thống kê doanh thu', error: err.message });
+  }
+});
 // ----Xác thực 2 yếu tố-----
 router.post('/setup-2fa', authMiddleware, async (req, res) => {
   try {
@@ -1006,19 +1108,30 @@ router.post('/verify-2fa-login', async (req, res) => {
       return res.status(400).json({ message: 'Mã OTP không hợp lệ' });
     }
 
-    // Tạo JWT token
-    const token = jwt.sign(
+     // Tạo tokens (cho cả admin và user thường)
+    const accessToken = jwt.sign(
       { userId: user._id, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
 
+    const refreshToken = jwt.sign(
+      { userId: user._id },
+      process.env.REFRESH_TOKEN_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    // Lưu refreshToken vào database
+    user.refreshToken = refreshToken;
+    await user.save();
+
     res.json({ 
       success: true, 
-      token,
+      accessToken,
+      refreshToken, // Trả về refreshToken
       user: {
         email: user.email,
-        role: user.role // Trả về role
+        role: user.role
       }
     });
   } catch (err) {

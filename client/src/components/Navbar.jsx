@@ -15,13 +15,13 @@ import {
 import { HiOutlineClock } from 'react-icons/hi';
 import { FiClock,FiUser } from 'react-icons/fi';
 import { IoMdArrowDropdown } from 'react-icons/io';
-import { toast } from 'react-toastify';
+// import { toast } from 'react-toastify';
 
-const Navbar = ({ token, setToken }) => {
+const Navbar = ({ token, setToken,onLogout }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [user, setUser] = useState('');
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
 
   // Fetch user data when token changes
   useEffect(() => {
@@ -36,20 +36,20 @@ const Navbar = ({ token, setToken }) => {
       } catch (error) {
         console.error('Failed to fetch user data:', error);
         // Handle error (e.g., invalid token)
-        handleLogout();
+        onLogout();
       }
     };
 
     fetchUserData();
   }, [token]);
 
-  const handleLogout = () => {
-    setToken('');
-    localStorage.removeItem('token');
-    setUser('');
-    navigate('/login');
-    toast.success("Đăng xuất thành công")
-  };
+  // const handleLogout = () => {
+  //   setToken('');
+  //   localStorage.removeItem('token');
+  //   setUser('');
+  //   navigate('/login');
+  //   toast.success("Đăng xuất thành công")
+  // };
 
   const closeAllMenus = () => {
     setIsMobileMenuOpen(false);
@@ -177,7 +177,7 @@ const Navbar = ({ token, setToken }) => {
                           Thông tin cá nhân
                         </Link>
                         <button
-                          onClick={handleLogout}
+                          onClick={onLogout}
                           className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-600 rounded-b-md"
                         >
                           <FaSignOutAlt className="mr-3" />
@@ -270,7 +270,7 @@ const Navbar = ({ token, setToken }) => {
                     Lịch sử thanh toán
                   </Link>
                   <button
-                    onClick={handleLogout}
+                    onClick={onLogout}
                     className="flex items-center w-full px-3 py-2 rounded-md text-base font-medium text-white hover:bg-red-600"
                   >
                     <FaSignOutAlt className="mr-3" />

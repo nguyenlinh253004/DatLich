@@ -465,6 +465,7 @@ const Home = ({ token }) => {
       </footer>
 
       {/* Service Modal */}
+    {/* Service Modal - Phiên bản cải tiến */}
       <AnimatePresence>
         {selectedService && (
           <motion.div
@@ -475,58 +476,112 @@ const Home = ({ token }) => {
             onClick={() => setSelectedService(null)}
           >
             <motion.div
-              className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+              className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
               variants={modalVariants}
               initial="hidden"
               animate="visible"
               exit="exit"
               onClick={(e) => e.stopPropagation()}
             >
+              {/* Header với hình ảnh và nút đóng */}
               <div className="relative">
-                <img
-                  src={ `http://localhost:5000${selectedService.image}` }
-                  alt={selectedService.name}
-                  className="w-full h-64 object-cover rounded-t-xl"
-                />
+                <div className="h-64 w-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-t-xl overflow-hidden">
+                  <img
+                    src={`http://localhost:5000${selectedService.image}`}
+                    alt={selectedService.name}
+                    className="w-full h-full object-cover object-center"
+                  />
+                </div>
                 <button
                   onClick={() => setSelectedService(null)}
-                  className="absolute top-4 right-4 bg-white/80 hover:bg-white p-2 rounded-full shadow-md transition-colors"
+                  className="absolute top-4 right-4 bg-white/90 hover:bg-white p-2 rounded-full shadow-lg transition-all transform hover:scale-110"
+                  aria-label="Đóng"
                 >
-                  <svg className="w-5 h-5 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
               
-              <div className="p-6">
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">{selectedService.name}</h3>
-                <div className="flex items-center mb-4">
-                  <div className="text-blue-600 font-bold mr-2">
-                    {selectedService.price?.toLocaleString() || 'Liên hệ'} VND
+              {/* Nội dung chi tiết */}
+              <div className="p-6 md:p-8">
+                {/* Tiêu đề và giá */}
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
+                  <div>
+                    <h3 className="text-2xl md:text-3xl font-bold text-gray-900 mb-1">
+                      {selectedService.name}
+                    </h3>
+                    <div className="flex items-center text-sm text-gray-500">
+                      <FiClock className="mr-1" />
+                      <span>{selectedService.duration || 60} phút</span>
+                    </div>
                   </div>
-                  <div className="text-gray-500 text-sm">
-                    • {selectedService.duration || 60} phút
+                  <div className="mt-4 md:mt-0">
+                    <span className="text-2xl font-bold text-blue-600">
+                      {selectedService.price?.toLocaleString('vi-VN') || 'Liên hệ'} VND
+                    </span>
                   </div>
                 </div>
-                
-                <div className="prose max-w-none text-gray-600 mb-6">
-                  {selectedService.Description || 'Không có mô tả chi tiết.'}
+
+                {/* Mô tả chi tiết */}
+                <div className="mb-8">
+                  <h4 className="text-lg font-semibold text-gray-800 mb-3">Mô tả dịch vụ</h4>
+                  <div className="prose max-w-none text-gray-600">
+                    {selectedService.Description || 'Không có mô tả chi tiết.'}
+                  </div>
                 </div>
-                
-                <div className="flex flex-wrap gap-4">
+
+                {/* Lợi ích (nếu có) */}
+                {selectedService.benefits && (
+                  <div className="mb-8">
+                    <h4 className="text-lg font-semibold text-gray-800 mb-3">Lợi ích</h4>
+                    <ul className="space-y-2">
+                      {selectedService.benefits.split('\n').map((benefit, i) => (
+                        <li key={i} className="flex items-start">
+                          <svg className="flex-shrink-0 w-5 h-5 text-green-500 mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span className="text-gray-600">{benefit}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Quy trình (nếu có) */}
+                {selectedService.procedure && (
+                  <div className="mb-8">
+                    <h4 className="text-lg font-semibold text-gray-800 mb-3">Quy trình thực hiện</h4>
+                    <div className="prose max-w-none text-gray-600">
+                      {selectedService.procedure}
+                    </div>
+                  </div>
+                )}
+
+                {/* Các nút hành động */}
+                <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-gray-200">
                   <Link
                     to="/BookingForm"
                     state={{ serviceId: selectedService._id }}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-center py-3 px-6 rounded-lg transition-colors"
+                    className="flex-1 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white text-center py-3 px-6 rounded-lg font-medium shadow-md transition-all transform hover:scale-[1.02]"
                   >
                     Đặt lịch ngay
                   </Link>
                   <button
                     onClick={() => setSelectedService(null)}
-                    className="flex-1 border border-gray-300 hover:bg-gray-50 text-gray-700 py-3 px-6 rounded-lg transition-colors"
+                    className="flex-1 border-2 border-gray-300 hover:bg-gray-50 text-gray-700 py-3 px-6 rounded-lg font-medium transition-colors"
                   >
-                    Đóng
+                    Xem thêm dịch vụ khác
                   </button>
+                </div>
+              </div>
+
+              {/* Footer modal */}
+              <div className="bg-gray-50 px-6 py-4 rounded-b-xl border-t border-gray-200">
+                <div className="flex items-center justify-center">
+                  <FiPhone className="text-blue-500 mr-2" />
+                  <span className="text-gray-600">Cần hỗ trợ? Gọi ngay: </span>
+                  <a href="tel:19001234" className="text-blue-600 font-medium ml-1 hover:underline">1900 1234</a>
                 </div>
               </div>
             </motion.div>

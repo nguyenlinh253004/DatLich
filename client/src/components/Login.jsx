@@ -36,7 +36,8 @@ const Login = ({ setToken }) => {
       } else {
         // Chỉ xử lý khi không cần 2FA
         setToken(res.data.token);
-        localStorage.setItem('token', res.data.token);
+        localStorage.setItem('accessToken', res.data.token);
+        localStorage.setItem('refreshToken', res.data.refreshToken);
         localStorage.setItem('userRole', res.data.user.role);
         toast.success('Đăng nhập thành công');
         navigate('/'); // Thống nhất một trang đích
@@ -63,10 +64,10 @@ const Login = ({ setToken }) => {
         token: otp,
       });
       
-      setToken(res.data.token);
-      localStorage.setItem('token', res.data.token);
-      localStorage.setItem('userRole', res.data.user.role); // Lưu role từ response mới
-      
+      setToken(res.data.accessToken);
+      localStorage.setItem('accessToken', res.data.accessToken);
+      localStorage.setItem('refreshToken', res.data.refreshToken);
+      localStorage.setItem('userRole', res.data.user.role);
       toast.success('Đăng nhập thành công');
       navigate(res.data.user.role === 'admin' ? '/admin/dashboard' : '/'); // Chuyển hướng đến trang admin nếu là admin
     } catch (err) {

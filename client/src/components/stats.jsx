@@ -6,6 +6,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 const Stats = ({ token }) => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+    const [revenueData, setRevenueData] = useState([]);
   const [timeRange, setTimeRange] = useState('week'); // 'week', 'month', 'year'
 
   useEffect(() => {
@@ -14,7 +15,13 @@ const Stats = ({ token }) => {
         const res = await axios.get(`http://localhost:5000/api/stats?range=${timeRange}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+         // Fetch doanh thu theo thời gian
+        const revenueRes = await axios.get(`http://localhost:5000/api/stats/revenue-by-time?range=${timeRange}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
         setStats(res.data.data);
+        setRevenueData(revenueRes.data.data);
         setLoading(false);
       } catch (err) {
         toast.error('Không thể tải thống kê');
@@ -41,13 +48,7 @@ const Stats = ({ token }) => {
     );
   }
 
-  // Dữ liệu mẫu cho biểu đồ - bạn cần thay thế bằng dữ liệu thực từ API
-  const revenueData = stats.revenueByPeriod || [
-    { name: 'Tuần 1', revenue: 4000 },
-    { name: 'Tuần 2', revenue: 3000 },
-    { name: 'Tuần 3', revenue: 2000 },
-    { name: 'Tuần 4', revenue: 2780 },
-  ];
+
 
   const appointmentStatusData = [
     { name: 'Đã xác nhận', value: stats.confirmedAppointments },
@@ -179,9 +180,14 @@ const Stats = ({ token }) => {
                 }}
               >
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip formatter={(value) => [`${value.toLocaleString('vi-VN')} VND`, 'Doanh thu']} />
+                <XAxis dataKey="period" />
+                <YAxis 
+                  tickFormatter={(value) => `${(value / 1000).toLocaleString('vi-VN')}k`}
+                />
+                <Tooltip 
+                  formatter={(value) => [`${value.toLocaleString('vi-VN')} VND`, 'Doanh thu']}
+                  labelFormatter={(label) => `Thời gian: ${label}`}
+                />
                 <Legend />
                 <Bar dataKey="revenue" fill="#8884d8" name="Doanh thu" />
               </BarChart>
