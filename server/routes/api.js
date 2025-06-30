@@ -339,7 +339,7 @@ router.post('/refresh-token', async (req, res) => {
 });
 // kiểm tra thời gian còn trống
 router.post('/appointments/check-availability', authMiddleware, async (req, res) => {
-  const { date } = req.body;
+  const { service,date } = req.body;
 
   try {
     if (!date) {
@@ -351,6 +351,7 @@ router.post('/appointments/check-availability', authMiddleware, async (req, res)
     const endTime = new Date(appointmentDate.getTime() + 30 * 60 * 1000); // Giả sử mỗi lịch hẹn kéo dài 30 phút
 
     const conflictingAppointments = await Appointment.find({
+      service,
       date: {
         $gte: startTime,
         $lt: endTime,
@@ -375,18 +376,6 @@ router.post('/appointments', authMiddleware, async (req, res) => {
     if (existingAppointment) {
       return res.status(400).json({ message: 'Giờ này đã được đặt cho dịch vụ này!' });
     }
-
-    // Gửi email xác nhận đặt lịch
-    // if (email) {
-    //   const mailOptions = {
-    //     from: process.env.SMTP_USER,
-    //     to: email,
-    //     subject: 'Xác nhận đặt lịch hẹn',
-    //     text: `Chào ${name},\n\nBạn đã đặt lịch thành công!\nDịch vụ: ${service}\nThời gian: ${new Date(date).toLocaleString('vi-VN')}\n\nCảm ơn bạn!`,
-    //   };
-    //   await transporter.sendMail(mailOptions);
-    // }
-
     // Lấy giá từ dịch vụ
     const serviceData = await Service.findOne({ name: service });
     if (!serviceData) {
@@ -461,7 +450,6 @@ router.get('/appointments', authMiddleware, async (req, res) => {
     }
 
   
-
     // Lấy danh sách lịch hẹn
     const appointments = await Appointment.find(query)
       .skip((page - 1) * limit)
@@ -504,7 +492,19 @@ router.put('/appointments/:id', authMiddleware, adminMiddleware, async (req, res
     res.status(500).json({ message: 'Lỗi khi cập nhật lịch hẹn', error: err.message });
   }
 });
-
+// Hủy lịch hẹn
+router.delete('/appointments/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const appointment = await Appointment.findOneAndDelete({ _id: id, userId: req.userId });
+    if (!appointment) {
+      return res.status(404).json({ message: 'Không tìm thấy lịch hẹn!' });
+    }
+    res.json({ message: 'Hủy lịch thành công' });
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi khi hủy lịch', error: err.message });
+  }
+});
 router.put('/appointments/:id/status', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -535,21 +535,6 @@ router.put('/appointments/:id/confirm', authMiddleware, adminMiddleware, async (
     }
     appointment.confirmed = confirmed;
     await appointment.save();
-
-    // Gửi email thông báo
-    // const user = await User.findById(appointment.userId);
-    // if (user && user.email) {
-    //   const mailOptions = {
-    //     from: process.env.SMTP_USER,
-    //     to: user.email,
-    //     subject: 'Cập nhật trạng thái lịch hẹn',
-    //     text: `Chào ${appointment.name},\n\nLịch hẹn của bạn vào ${new Date(appointment.date).toLocaleString()} đã được ${
-    //       confirmed === 'confirmed' ? 'xác nhận' : 'từ chối'
-    //     }.\n\nCảm ơn bạn!`,
-    //   };
-    //   await transporter.sendMail(mailOptions);
-    // }
-
     res.json({ message: `Lịch hẹn đã được ${confirmed === 'confirmed' ? 'xác nhận' : 'từ chối'}`, appointment });
   } catch (err) {
     res.status(500).json({ message: 'Lỗi khi cập nhật trạng thái lịch hẹn', error: err.message });
@@ -579,22 +564,6 @@ router.put('/payments/confirm-qr/:paymentId', authMiddleware, async (req, res) =
     if (appointment) {
       appointment.status = 'paid';
       await appointment.save();
-
-      // Gửi email thông báo cho người dùng
-      // if (appointment.email) {
-      //   await sendEmail(
-      //     appointment.email,
-      //     'Xác nhận thanh toán qua mã QR',
-      //     `Chào ${appointment.name},\n\nLịch hẹn của bạn đã được xác nhận thanh toán qua mã QR:\n- Dịch vụ: ${appointment.service}\n- Thời gian: ${new Date(appointment.date).toLocaleString()}\n\nCảm ơn bạn đã sử dụng dịch vụ!\n\nTrân trọng,\nHệ thống đặt lịch`
-      //   );
-      // }
-
-      // Gửi email thông báo cho admin
-      // await sendEmail(
-      //   process.env.ADMIN_EMAIL || 'admin@example.com',
-      //   'Xác nhận thanh toán qua mã QR',
-      //   `Lịch hẹn đã được xác nhận thanh toán qua mã QR:\n- Tên khách hàng: ${appointment.name}\n- Dịch vụ: ${appointment.service}\n- Thời gian: ${new Date(appointment.date).toLocaleString()}`
-      // );
     }
 
     res.json({ success: true, message: 'Xác nhận thanh toán qua mã QR thành công' });
@@ -627,19 +596,7 @@ router.put('/appointments/:id/confirm-payment', authMiddleware, async (req, res)
     res.status(500).json({ message: 'Lỗi khi xác nhận thanh toán', error: err.message });
   }
 });
-// Hủy lịch hẹn
-router.delete('/appointments/:id', authMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const appointment = await Appointment.findOneAndDelete({ _id: id, userId: req.userId });
-    if (!appointment) {
-      return res.status(404).json({ message: 'Không tìm thấy lịch hẹn!' });
-    }
-    res.json({ message: 'Hủy lịch thành công' });
-  } catch (err) {
-    res.status(500).json({ message: 'Lỗi khi hủy lịch', error: err.message });
-  }
-});
+
 
 // Payments
 router.post('/payments/create-payment-intent', authMiddleware, async (req, res) => {

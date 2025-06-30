@@ -3,7 +3,8 @@ import {
     UserIcon, 
     CalendarIcon, 
     ChartBarIcon, 
-    Cog6ToothIcon as CogIcon
+    Cog6ToothIcon as CogIcon,
+    Square3Stack3DIcon
 } from '@heroicons/react/24/outline';
 import React from "react";
 
@@ -77,7 +78,7 @@ const Dashboard = ({token}) => {
                         >
                             <div className="flex items-center mb-4">
                                 <div className="p-3 bg-yellow-50 rounded-lg mr-4">
-                                    <CogIcon className="w-6 h-6 text-yellow-600" />
+                                    <Square3Stack3DIcon className="w-6 h-6 text-yellow-600" />
                                 </div>
                                 <h3 className="text-lg font-semibold text-gray-800">Quản lý thống kê</h3>
                             </div>

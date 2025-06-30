@@ -72,7 +72,7 @@ const UserList = ({ token }) => {
   const pageCount = Math.ceil(total / itemsPerPage);
 
   return (
-    <div className="container mx-auto px-4 py-8 font-roboto">
+    <div className="mt-8 container mx-auto px-4 py-8 font-roboto">
       <h2 className="text-2xl font-bold mb-6 text-gray-800">Quản lý người dùng</h2>
 
       {/* Bộ lọc */}
